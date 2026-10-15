@@ -1,29 +1,33 @@
-# Plan: bring the NHANES app in line with the M9 spec
+# Plan: NHANES Health Correlation Explorer
 
-## Context
-The folder already has a draft `app.py`, `plan.md` and `prompts.md` from an earlier attempt that used a different feature list (ranked-pairs table, text summary). The M9 exercise requires different features. The draft is missing: data preview, threshold coloring, trend/binned means choice, user-picked heatmap variables, and the Pearson/Spearman toggle. It also never uses `scipy`. Its `plan.md` has no Spearman and lists wrong features.
+## Goal
+One Streamlit file, `app.py`, that explores correlations in `nhanes_health.csv` (4,433 adults, NHANES 2017-2018) with the five M9 features: data preview, pairwise view, correlation heatmap, sidebar filters, and a Pearson/Spearman toggle.
 
-## Changes to app.py (one file, streamlit/pandas/seaborn/matplotlib/numpy only)
-1. Keep: `load_data()` (relative path `nhanes_health.csv`), `NUMERIC_COLS` without sex, one filtered `df` computed once at the top, and the `< 30 rows` warning.
-2. Sidebar: sex (All/Male/Female), age range slider, and a **method radio (Pearson/Spearman)**. All views take `df` and `method`.
-3. **Data preview**: dataset description (4,433 NHANES 2017-18 adults, sample not population caveat), `st.dataframe(df)` with row count.
-4. **Pairwise view**: X and Y dropdowns. Drop NaN pairs, compute `r = pair[x].corr(pair[y], method=method)` and `n = len(pair)`. Scatter plus a trend line (`regplot` for Pearson, binned means for Spearman, or a "Trend: line / binned means" radio). A "Color by threshold" checkbox with a preset selectbox (SBP ≥ 130, DBP ≥ 80, BMI ≥ 30, HbA1c ≥ 6.5, total chol ≥ 240) that colors points by that column. Show r and n via `st.metric`, plus the caution that r near 0 does not mean no relationship (U-shaped sleep).
-5. **Heatmap**: `st.multiselect` for variables (default all 10, need ≥ 2). r matrix with `df[cols].corr(method=method)`, n matrix by pairwise counts, `vmin=-1, vmax=1, center=0`, annotated with r and n in every cell. Caption stating the color scale is fixed to -1..1.
-6. Remove the ranked-pairs table and the auto summary (not required). Remove them to keep the file simple.
-7. Use `width="stretch"` as in the draft; keep matplotlib figures closed after use.
+## Data rules
+- Numeric columns: age, bmi, waist_cm, systolic_bp, diastolic_bp, hba1c, total_chol, hdl_chol, sleep_hours, sedentary_minutes.
+- `sex` is text. It is used only as a filter and never enters a correlation, heatmap or scatter axis.
+- Missing values: pairwise deletion, so each r uses only rows where both columns are present. No imputation.
+- Packages: streamlit, pandas, seaborn, matplotlib, numpy, scipy. Nothing else without asking.
 
-## Other deliverables
-- `requirements.txt`: streamlit, pandas, seaborn, matplotlib, scipy (scipy needed for Spearman in pandas).
-- `plan.md`: rewrite to match this plan (the approved version).
-- `prompts.md`: keep Prompt 1 and append each follow-up prompt, including the revision prompt.
-- `verification.md`: the 6-row table, the M9 trap paragraph, and the code check. Values read from the running app and computed independently in pandas by the user (I can supply the pandas numbers, but the user must read the app side).
-- GitHub repo and Streamlit Cloud deploy: needs the user's account, so I will give exact steps and only run `git init`/commit/push if they ask.
+## Build order
+1. **Data and filters.** Load the CSV with the relative path `nhanes_health.csv` (cached). Sidebar: sex (All/Male/Female), age range slider, and the method radio (Pearson/Spearman). Compute one filtered DataFrame `df` once at the top and pass it to every view. If fewer than 30 rows remain, show a warning and stop.
+2. **Data preview.** Short dataset description (including the caveat that NHANES oversamples some groups, so results describe this sample), the filtered row count, and a table of the filtered rows.
+3. **Pairwise view.** X and Y dropdowns. Drop rows missing either column, compute `r = x.corr(y, method=method)` and `n = len(pair)`, and show both with `st.metric`. Scatter plot with a linear trend line or binned means (user choice), an optional checkbox to color points by a health threshold (SBP >= 130, DBP >= 80, BMI >= 30, HbA1c >= 6.5, total cholesterol >= 240), and r and n in the plot title. Include the caution that an r near zero does not mean "no relationship" (the U-shaped sleep curve).
+4. **Heatmap.** Multiselect for variables (default all ten, at least two). r matrix with `df[cols].corr(method=method)` and a pairwise n matrix. Every cell is annotated with r and n. Colors are diverging, centered at 0 and fixed to -1..1 for every filter setting. A caption states the fixed scale.
+5. **Deliverables.** `requirements.txt` listing every import, `prompts.md`, `plan.md`, `verification.md`.
+
+## How the filters feed every view
+The sex and age filters produce one `df`. The preview table, the pairwise r and n, the scatter plot and the heatmap all read from that same `df`, so none of them can use unfiltered data. The method radio is passed to both the pairwise correlation and the heatmap.
+
+## Run command
+```bash
+uv run --with streamlit,pandas,seaborn,scipy streamlit run app.py
+```
+
+## Assumptions
+- Pearson is the default method.
+- The linear trend line is always a straight-line fit, even under Spearman. Binned means are offered for non-linear patterns.
+- Minimum of 30 rows after filtering.
 
 ## Verification
-- Run: `uv run --with streamlit,pandas,seaborn,scipy streamlit run app.py`
-- Compute checks 1-6 in pandas, then compare with the app for All, Female and Male, and for the heatmap with Female. Also check Spearman against `df.corr(method="spearman")`.
-- Confirm the heatmap colorbar spans -1..1 for every filter setting.
-- Confirm n changes with filters in every view.
-
-## Open questions (assumed)
-- Pearson default, trend line for Pearson and binned means as an option, and a 30-row minimum.
+Read r and n from the app and compute them independently in pandas for: all participants (age vs systolic_bp, bmi vs waist_cm, waist_cm vs hdl_chol), Female only, Male only, and the Female heatmap square. Also check Spearman against `df.corr(method="spearman")` and confirm the heatmap colorbar spans -1 to 1. Results are in `verification.md`.
